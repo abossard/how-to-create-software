@@ -1,7 +1,7 @@
 fastapi==0.116.1
 uvicorn==0.32.0
 redis[asyncio]==6.4.0
-requests==2.32.3
+requests==2.32.4
 opentelemetry-sdk==1.36.0
 opentelemetry-exporter-otlp==1.36.0
 opentelemetry-instrumentation-fastapi==0.57b0
