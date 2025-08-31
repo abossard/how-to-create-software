@@ -1,0 +1,30 @@
+# Build artifacts
+**/node_modules/
+**/dist/
+**/build/
+
+# Docker volumes
+**/.docker/
+
+# Logs
+**/*.log
+**/logs/
+
+# Environment files
+**/.env
+**/.env.local
+
+# Python cache
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# IDE files
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
