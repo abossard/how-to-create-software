@@ -1,30 +1,44 @@
-# Build artifacts
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Node.js
+node_modules/
 **/node_modules/
+npm-debug.log
+yarn-error.log
+.npm
 **/dist/
 **/build/
 
-# Docker volumes
+# Docker
+.dockerignore
 **/.docker/
 
+# IDE and editors
+.vscode/
+**/.vscode/
+.idea/
+**/.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
 # Logs
+*.log
 **/*.log
 **/logs/
 
 # Environment files
 **/.env
 **/.env.local
-
-# Python cache
-**/__pycache__/
-**/*.pyc
-**/*.pyo
-
-# IDE files
-**/.vscode/
-**/.idea/
-**/*.swp
-**/*.swo
-
-# OS files
-.DS_Store
-Thumbs.db
