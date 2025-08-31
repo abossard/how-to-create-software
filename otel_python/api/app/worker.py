@@ -8,7 +8,8 @@ from opentelemetry import trace
 from opentelemetry.instrumentation.redis import RedisInstrumentor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, OTLPSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 ai_conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
 ai_key = os.getenv("APPINSIGHTS_INSTRUMENTATIONKEY") or os.getenv(
