@@ -1,8 +1,27 @@
 import asyncio
 import json
 import os
+
 import redis.asyncio as redis
+from azure.monitor.opentelemetry import configure_azure_monitor
 from opentelemetry import trace
+from opentelemetry.instrumentation.redis import RedisInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, OTLPSpanExporter
+
+ai_conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
+ai_key = os.getenv("APPINSIGHTS_INSTRUMENTATIONKEY") or os.getenv(
+    "APPLICATIONINSIGHTS_INSTRUMENTATION_KEY"
+)
+if ai_conn or ai_key:
+    configure_azure_monitor()
+else:
+    provider = TracerProvider(resource=Resource.create({"service.name": "worker"}))
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
+    trace.set_tracer_provider(provider)
+
+RedisInstrumentor().instrument()
 
 QUEUE = "tasks"
 RESULTS = "results"

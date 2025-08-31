@@ -1,7 +1,7 @@
 # OTEL Python Demo
 
 This demo shows a React frontend, FastAPI backend and background worker processing tasks via Redis.
-OpenTelemetry traces from all services are sent to an Aspire dashboard.
+Telemetry is sent to Azure Monitor when an Application Insights connection string or instrumentation key is supplied. Otherwise, the services use the native OpenTelemetry SDK and export to the Aspire dashboard. The provided `docker compose` setup runs in this Aspire mode by default.
 
 ## Running the stack
 
@@ -9,7 +9,8 @@ OpenTelemetry traces from all services are sent to an Aspire dashboard.
 docker compose up --build
 ```
 
-The `frontend` is available on http://localhost:5173, the API on http://localhost:8000 and the Aspire dashboard on http://localhost:18888.
+The `frontend` is available on http://localhost:5173 and the API on http://localhost:8000.
+The Aspire observability dashboard is available on http://localhost:18888 when running in the default (non-Azure Monitor) mode.
 
 ## Tests
 
