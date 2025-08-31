@@ -1,0 +1,55 @@
+version: "3.9"
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_OTEL_ENDPOINT=http://aspire:4318
+      - VITE_API_URL=http://api:8000
+    depends_on:
+      - api
+      - aspire
+  api:
+    build: .
+    working_dir: /app/api
+    command: opentelemetry-instrument uvicorn app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_SERVICE_NAME=api
+    depends_on:
+      - redis
+      - aspire
+  worker:
+    build: .
+    working_dir: /app/api
+    command: opentelemetry-instrument python -m app.worker
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_SERVICE_NAME=worker
+    depends_on:
+      - redis
+      - aspire
+  tests:
+    build: .
+    working_dir: /app
+    command: sh -c "python -m unittest tests/test_e2e.py -v"
+    environment:
+      - BASE_URL=http://api:8000
+    depends_on:
+      - api
+      - worker
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+  aspire:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.4
+    ports:
+      - "18888:18888"
+      - "4317:4317"
+      - "4318:4318"
