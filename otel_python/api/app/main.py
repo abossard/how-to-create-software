@@ -12,14 +12,6 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, OTLPSpanExporter
 
-# Example from Azure docs on initializing the distro:
-# import logging
-# from azure.monitor.opentelemetry import configure_azure_monitor
-# configure_azure_monitor(
-#     logger_name="<your_logger_namespace>",
-# )
-# logger = logging.getLogger("<your_logger_namespace>")
-
 app = FastAPI()
 
 ai_conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
