@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.pyd
@@ -9,16 +10,22 @@ pip-delete-this-directory.txt
 
 # Node.js
 node_modules/
+**/node_modules/
 npm-debug.log
 yarn-error.log
 .npm
+**/dist/
+**/build/
 
 # Docker
 .dockerignore
+**/.docker/
 
 # IDE and editors
 .vscode/
+**/.vscode/
 .idea/
+**/.idea/
 *.swp
 *.swo
 *~
@@ -29,3 +36,9 @@ Thumbs.db
 
 # Logs
 *.log
+**/*.log
+**/logs/
+
+# Environment files
+**/.env
+**/.env.local
