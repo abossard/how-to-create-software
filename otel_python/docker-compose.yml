@@ -4,7 +4,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_OTEL_ENDPOINT=http://aspire:4318
+      - VITE_OTEL_ENDPOINT=http://aspire:18890
       - VITE_API_URL=http://api:8000
     depends_on:
       - api
@@ -16,7 +16,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:4318
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:18890
       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       - OTEL_SERVICE_NAME=api
     depends_on:
@@ -27,7 +27,7 @@ services:
     working_dir: /app/api
     command: opentelemetry-instrument python -m app.worker
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:4318
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:18890
       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
       - OTEL_SERVICE_NAME=worker
     depends_on:
