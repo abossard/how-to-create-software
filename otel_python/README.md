@@ -10,6 +10,7 @@ docker compose up --build
 ```
 
 The `frontend` is available on http://localhost:5173 and the API on http://localhost:8000.
+The Aspire observability dashboard is available on http://localhost:18888 when running in the default (non-Azure Monitor) mode.
 
 ## Tests
 
