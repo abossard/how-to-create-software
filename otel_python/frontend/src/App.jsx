@@ -34,7 +34,7 @@ export default function App() {
   }, [appInsights]);
 
   // Poll for task result using enhanced API client
-  const pollResult = useCallback(async (taskId, maxAttempts = 20) => {
+  const pollResult = useCallback(async (taskId, maxAttempts = 20, taskSpan = null) => {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const response = await apiClient.get(`result/${taskId}`);
@@ -52,6 +52,11 @@ export default function App() {
           } }));
           setStatus(prev => prev?.taskId === taskId ? { ...prev, completed: true } : prev);
           
+          // Complete task span with success
+          if (taskSpan) {
+            taskSpan.complete(data.result, 'completed');
+          }
+          
           // Track task completion with correlation data
           if (appInsights && appInsights.trackEvent) {
             appInsights.trackEvent(
@@ -61,7 +66,8 @@ export default function App() {
                 result: data.result,
                 inputLength: input.length,
                 pollingAttempts: attempt + 1,
-                correlationHeaders: response.headers.get('Request-Id') || 'none'
+                correlationHeaders: response.headers.get('Request-Id') || 'none',
+                'task.span_id': taskSpan ? taskSpan.spanName : 'unknown'
               }
             );
           }
@@ -87,6 +93,11 @@ export default function App() {
         } }));
         setStatus(prev => prev?.taskId === taskId ? { ...prev, error: err.message } : prev);
         
+        // Complete task span with error
+        if (taskSpan) {
+          taskSpan.complete(null, 'polling_error', err.message);
+        }
+        
         // Track polling error with correlation context
         if (appInsights && appInsights.trackException) {
           appInsights.trackException(
@@ -96,7 +107,8 @@ export default function App() {
               operation: 'polling', 
               attempt: attempt + 1,
               apiEndpoint: `result/${taskId}`,
-              apiBase: API_BASE
+              apiBase: API_BASE,
+              'task.span_id': taskSpan ? taskSpan.spanName : 'unknown'
             }
           );
         }
@@ -114,6 +126,11 @@ export default function App() {
     } }));
     setStatus(prev => prev?.taskId === taskId ? { ...prev, error: timeoutError } : prev);
     
+    // Complete task span with timeout
+    if (taskSpan) {
+      taskSpan.complete(null, 'timeout', timeoutError);
+    }
+    
     // Track timeout as custom event
     if (appInsights && appInsights.trackEvent) {
       appInsights.trackEvent(
@@ -122,7 +139,8 @@ export default function App() {
           taskId, 
           maxAttempts, 
           operation: 'polling',
-          apiBase: API_BASE
+          apiBase: API_BASE,
+          'task.span_id': taskSpan ? taskSpan.spanName : 'unknown'
         }
       );
     }
@@ -134,6 +152,9 @@ export default function App() {
     setLoading(true);
     setStatus(null);
     
+    // Create custom task span with input text
+    const taskSpan = apiClient.createTaskSpan(endpoint, input);
+    
     // Use enhanced API client for task submission
     apiClient.post(endpoint, input)
       .then(async (response) => {
@@ -143,6 +164,9 @@ export default function App() {
         const taskId = data.task_id;
         setStatus({ kind: endpoint, taskId, submitted: true });
         
+        // Update task span with task ID
+        taskSpan.taskId = taskId;
+        
         // Initialize result tracking with submission timestamp
         setResults(prev => ({ ...prev, [taskId]: { 
           status: 'pending', 
@@ -151,7 +175,7 @@ export default function App() {
           taskType: endpoint 
         } }));
         
-        // Track task submission with correlation data
+        // Track task submission with correlation data and task span context
         if (appInsights && appInsights.trackEvent) {
           appInsights.trackEvent(
             { name: 'TaskSubmitted' },
@@ -161,17 +185,21 @@ export default function App() {
               inputText: input,
               inputLength: input.length,
               correlationHeaders: response.headers.get('Request-Id') || 'none',
-              apiBase: API_BASE
+              apiBase: API_BASE,
+              'task.span_id': taskSpan.spanName
             }
           );
         }
         
-        // Start polling for result
-        pollResult(taskId);
+        // Start polling for result with task span context
+        pollResult(taskId, 20, taskSpan);
       })
       .catch((err) => {
         console.error('API error', err);
         setStatus({ error: err.message });
+        
+        // Complete task span with error
+        taskSpan.complete(null, 'failed', err.message);
         
         // Enhanced API error tracking with correlation context
         if (appInsights && appInsights.trackException) {
@@ -182,7 +210,8 @@ export default function App() {
               endpoint, 
               inputText: input,
               apiBase: API_BASE,
-              timestamp: new Date().toISOString()
+              timestamp: new Date().toISOString(),
+              'task.span_id': taskSpan.spanName
             }
           );
         }

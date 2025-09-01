@@ -103,6 +103,9 @@ async def log_correlation_headers(request: Request, call_next):
         # 🔥 Live Metrics: Decrement active requests
         live_metrics["active_requests"] -= 1
 
+# Get service name from environment variable as single source of truth
+service_name = os.getenv("OTEL_SERVICE_NAME", "api")
+
 ai_conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
 ai_key = os.getenv("APPINSIGHTS_INSTRUMENTATIONKEY") or os.getenv(
     "APPLICATIONINSIGHTS_INSTRUMENTATION_KEY"
@@ -113,17 +116,17 @@ if ai_conn or ai_key:
         connection_string=ai_conn,
         enable_live_metrics=True,  # Enable Live Metrics Stream
         resource=Resource.create({
-            "service.name": "otel-python-api",
+            "service.name": service_name,
             "service.version": "1.0.0",
-            "service.instance.id": os.getenv("HOSTNAME", "api-1")
+            "service.instance.id": os.getenv("HOSTNAME", f"{service_name}-1")
         })
     )
-    logger.info("🔥 Azure Monitor configured with Live Metrics Stream enabled")
+    logger.info(f"🔥 Azure Monitor configured with Live Metrics Stream enabled for service: {service_name}")
 else:
-    provider = TracerProvider(resource=Resource.create({"service.name": "api"}))
+    provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     trace.set_tracer_provider(provider)
-    logger.info("⚠️ Using OTLP exporter - Azure Monitor not configured")
+    logger.info(f"⚠️ Using OTLP exporter for service: {service_name} - Azure Monitor not configured")
 
 FastAPIInstrumentor().instrument_app(app)
 RedisInstrumentor().instrument()
@@ -145,10 +148,10 @@ async def enqueue(kind: str, payload: str) -> str:
 
 @app.post("/task1")
 async def task1(payload: str = Body(...), request: Request = None):
-    """Task 1: Reverse string with correlation tracking."""
+    """Task 1: Reverse string with enhanced task tracking."""
     tracer = trace.get_tracer(__name__)
     
-    with tracer.start_as_current_span("task1_reverse") as span:
+    with tracer.start_as_current_span("TaskOperation.task1") as span:
         # Add correlation context to span
         traceparent = request.headers.get("traceparent") if request else None
         request_id = request.headers.get("request-id") if request else None
@@ -158,22 +161,36 @@ async def task1(payload: str = Body(...), request: Request = None):
         if request_id:
             span.set_attribute("correlation.request_id", request_id)
         
-        span.set_attribute("task.type", "reverse")
-        span.set_attribute("task.payload", payload)
+        # 🎯 Rich task attributes with input text
+        span.set_attribute("task.type", "task1")
+        span.set_attribute("task.operation", "reverse")
+        span.set_attribute("task.input_text", payload)
+        span.set_attribute("task.input_length", len(payload))
+        span.set_attribute("task.input_words", len(payload.split()))
+        span.set_attribute("task.status", "submitted")
+        span.set_attribute("operation.name", "TaskOperation.task1")
         
         task_id = await enqueue("reverse", payload)
         span.set_attribute("task.id", task_id)
+        span.set_attribute("task.queue_position", live_metrics["task_queue_depth"])
         
-        logger.info(f"Task1 {task_id} queued with correlation: traceparent={traceparent}, request_id={request_id}")
+        # Add custom event for task submission
+        span.add_event("task.submitted", {
+            "task.id": task_id,
+            "task.input_preview": payload[:50] + "..." if len(payload) > 50 else payload,
+            "queue.depth": live_metrics["task_queue_depth"]
+        })
+        
+        logger.info(f"Task1 {task_id} queued with input: '{payload[:50]}...' - correlation: traceparent={traceparent}")
         
         return {"task_id": task_id}
 
 @app.post("/task2")
 async def task2(payload: str = Body(...), request: Request = None):
-    """Task 2: Uppercase string with correlation tracking."""
+    """Task 2: Uppercase string with enhanced task tracking."""
     tracer = trace.get_tracer(__name__)
     
-    with tracer.start_as_current_span("task2_uppercase") as span:
+    with tracer.start_as_current_span("TaskOperation.task2") as span:
         # Add correlation context to span
         traceparent = request.headers.get("traceparent") if request else None
         request_id = request.headers.get("request-id") if request else None
@@ -183,22 +200,36 @@ async def task2(payload: str = Body(...), request: Request = None):
         if request_id:
             span.set_attribute("correlation.request_id", request_id)
         
-        span.set_attribute("task.type", "uppercase")
-        span.set_attribute("task.payload", payload)
+        # 🎯 Rich task attributes with input text
+        span.set_attribute("task.type", "task2")
+        span.set_attribute("task.operation", "uppercase")
+        span.set_attribute("task.input_text", payload)
+        span.set_attribute("task.input_length", len(payload))
+        span.set_attribute("task.input_words", len(payload.split()))
+        span.set_attribute("task.status", "submitted")
+        span.set_attribute("operation.name", "TaskOperation.task2")
         
         task_id = await enqueue("uppercase", payload)
         span.set_attribute("task.id", task_id)
+        span.set_attribute("task.queue_position", live_metrics["task_queue_depth"])
         
-        logger.info(f"Task2 {task_id} queued with correlation: traceparent={traceparent}, request_id={request_id}")
+        # Add custom event for task submission
+        span.add_event("task.submitted", {
+            "task.id": task_id,
+            "task.input_preview": payload[:50] + "..." if len(payload) > 50 else payload,
+            "queue.depth": live_metrics["task_queue_depth"]
+        })
+        
+        logger.info(f"Task2 {task_id} queued with input: '{payload[:50]}...' - correlation: traceparent={traceparent}")
         
         return {"task_id": task_id}
 
 @app.post("/task3")
 async def task3(payload: str = Body(...), request: Request = None):
-    """Task 3: Slow processing with correlation tracking."""
+    """Task 3: Slow processing with enhanced task tracking."""
     tracer = trace.get_tracer(__name__)
     
-    with tracer.start_as_current_span("task3_slow") as span:
+    with tracer.start_as_current_span("TaskOperation.task3") as span:
         # Add correlation context to span
         traceparent = request.headers.get("traceparent") if request else None
         request_id = request.headers.get("request-id") if request else None
@@ -208,22 +239,36 @@ async def task3(payload: str = Body(...), request: Request = None):
         if request_id:
             span.set_attribute("correlation.request_id", request_id)
         
-        span.set_attribute("task.type", "slow")
-        span.set_attribute("task.payload", payload)
+        # 🎯 Rich task attributes with input text
+        span.set_attribute("task.type", "task3")
+        span.set_attribute("task.operation", "slow_process")
+        span.set_attribute("task.input_text", payload)
+        span.set_attribute("task.input_length", len(payload))
+        span.set_attribute("task.input_words", len(payload.split()))
+        span.set_attribute("task.status", "submitted")
+        span.set_attribute("operation.name", "TaskOperation.task3")
         
         task_id = await enqueue("slow", payload)
         span.set_attribute("task.id", task_id)
+        span.set_attribute("task.queue_position", live_metrics["task_queue_depth"])
         
-        logger.info(f"Task3 {task_id} queued with correlation: traceparent={traceparent}, request_id={request_id}")
+        # Add custom event for task submission
+        span.add_event("task.submitted", {
+            "task.id": task_id,
+            "task.input_preview": payload[:50] + "..." if len(payload) > 50 else payload,
+            "queue.depth": live_metrics["task_queue_depth"]
+        })
+        
+        logger.info(f"Task3 {task_id} queued with input: '{payload[:50]}...' - correlation: traceparent={traceparent}")
         
         return {"task_id": task_id}
 
 @app.get("/result/{task_id}")
 async def get_result(task_id: str, request: Request = None):
-    """Get task result with correlation tracking."""
+    """Get task result with enhanced tracking."""
     tracer = trace.get_tracer(__name__)
     
-    with tracer.start_as_current_span("get_result") as span:
+    with tracer.start_as_current_span("TaskOperation.get_result") as span:
         # Add correlation context to span
         traceparent = request.headers.get("traceparent") if request else None
         request_id = request.headers.get("request-id") if request else None
@@ -234,16 +279,31 @@ async def get_result(task_id: str, request: Request = None):
             span.set_attribute("correlation.request_id", request_id)
         
         span.set_attribute("task.id", task_id)
+        span.set_attribute("operation.name", "TaskOperation.get_result")
         
         result = await r.hget(RESULTS, task_id)
         if result is None:
             span.set_attribute("task.status", "pending")
-            logger.info(f"Task {task_id} result pending - correlation: traceparent={traceparent}, request_id={request_id}")
+            span.add_event("task.result_pending", {
+                "task.id": task_id,
+                "check_timestamp": str(uuid.uuid4().hex)  # Simple timestamp
+            })
+            logger.info(f"Task {task_id} result pending - correlation: traceparent={traceparent}")
             return {"status": "pending"}
         
-        span.set_attribute("task.status", "done")
+        # 🎯 Rich result attributes
+        span.set_attribute("task.status", "completed")
         span.set_attribute("task.result", result)
-        logger.info(f"Task {task_id} result retrieved - correlation: traceparent={traceparent}, request_id={request_id}")
+        span.set_attribute("task.result_length", len(result))
+        
+        # Add custom event for task completion
+        span.add_event("task.result_retrieved", {
+            "task.id": task_id,
+            "task.result_preview": result[:50] + "..." if len(result) > 50 else result,
+            "result_length": len(result)
+        })
+        
+        logger.info(f"Task {task_id} result retrieved: '{result[:50]}...' - correlation: traceparent={traceparent}")
         
         return {"status": "done", "result": result}
 

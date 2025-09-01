@@ -1,8 +1,74 @@
-// Enhanced API client with Application Insights dependency tracking
+// Enhanced API client with Application Insights dependency tracking and custom task spans
 export class AppInsightsApiClient {
   constructor(appInsights, baseUrl) {
     this.appInsights = appInsights;
     this.baseUrl = baseUrl;
+  }
+
+  // Create custom task span for business operations
+  createTaskSpan(taskType, inputText, taskId = null) {
+    const spanName = `Task.${taskType}`;
+    const startTime = Date.now();
+    
+    // Create a custom operation for this task
+    const operation = this.appInsights.startTrackPage(spanName);
+    
+    // Track as custom event with rich attributes
+    this.appInsights.trackEvent({
+      name: `TaskOperation.${taskType}`,
+      properties: {
+        'task.type': taskType,
+        'task.input_text': inputText,
+        'task.input_length': inputText.length,
+        'task.id': taskId || 'pending',
+        'task.status': 'started',
+        'operation.name': spanName,
+        'operation.start_time': new Date(startTime).toISOString(),
+        'browser.user_agent': navigator.userAgent,
+        'task.word_count': inputText.split(/\s+/).length
+      },
+      measurements: {
+        'task.input_characters': inputText.length,
+        'task.input_words': inputText.split(/\s+/).length,
+        'operation.start_timestamp': startTime
+      }
+    });
+
+    return {
+      spanName,
+      startTime,
+      operation,
+      complete: (result, status = 'completed', error = null) => {
+        const duration = Date.now() - startTime;
+        
+        // Track task completion
+        this.appInsights.trackEvent({
+          name: `TaskOperation.${taskType}.${status}`,
+          properties: {
+            'task.type': taskType,
+            'task.input_text': inputText,
+            'task.input_length': inputText.length,
+            'task.id': taskId || 'unknown',
+            'task.status': status,
+            'task.result': result ? String(result).substring(0, 500) : null,
+            'task.error': error,
+            'operation.name': spanName,
+            'operation.duration_ms': duration,
+            'operation.end_time': new Date().toISOString()
+          },
+          measurements: {
+            'task.duration_ms': duration,
+            'task.input_characters': inputText.length,
+            'task.output_characters': result ? String(result).length : 0
+          }
+        });
+
+        // Stop the operation
+        if (operation && operation.stop) {
+          operation.stop();
+        }
+      }
+    };
   }
 
   async request(endpoint, options = {}) {
