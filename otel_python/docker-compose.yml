@@ -1,44 +1,63 @@
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://api:8000}
     ports:
       - "5173:5173"
+    env_file:
+      - .env
     environment:
-      - VITE_OTEL_ENDPOINT=http://aspire:4318
-      - VITE_API_URL=http://api:8000
+      # Allow overriding or ensuring defaults (compose merges env_file first, then these)
+      VITE_OTEL_ENDPOINT: ${VITE_OTEL_ENDPOINT:-http://aspire:18890}
+      # Runtime API URL injected by server.mjs (used by window.API_BASE). Use host-accessible URL.
+      API_URL: ${API_URL:-http://localhost:8000}
     depends_on:
       - api
       - aspire
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     working_dir: /app/api
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:4318
-      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-      - OTEL_SERVICE_NAME=api
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://aspire:18890}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME_API:-api}
     depends_on:
-      - redis
-      - aspire
+      redis:
+        condition: service_started
   worker:
-    build: .
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     working_dir: /app/api
     command: python -m app.worker
+    env_file:
+      - .env
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire:4318
-      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-      - OTEL_SERVICE_NAME=worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://aspire:18890}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME_WORKER:-worker}
     depends_on:
-      - redis
-      - aspire
+      redis:
+        condition: service_started
   tests:
-    build: .
+    build:
+      context: .
+      dockerfile: api/Dockerfile
     working_dir: /app
     command: sh -c "python -m unittest tests/test_e2e.py -v"
+    env_file:
+      - .env
     environment:
-      - BASE_URL=http://api:8000
+      BASE_URL: ${BASE_URL:-http://api:8000}
     depends_on:
       - api
       - worker
@@ -50,5 +69,6 @@ services:
     image: mcr.microsoft.com/dotnet/aspire-dashboard:9.4
     ports:
       - "18888:18888"
-      - "4317:4317"
-      - "4318:4318"
+      # Expose gRPC and HTTP OTLP ports if you want host access (optional):
+      # - "18889:18889"  # OTLP gRPC
+      # - "18890:18890"  # OTLP HTTP

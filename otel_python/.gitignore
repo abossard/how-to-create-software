@@ -1,0 +1,3 @@
+# Root ignores
+.env
+.env.local

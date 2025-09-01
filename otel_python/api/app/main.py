@@ -4,6 +4,7 @@ import uuid
 
 import redis.asyncio as redis
 from fastapi import Body, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from azure.monitor.opentelemetry import configure_azure_monitor
 from opentelemetry import trace
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -14,6 +15,21 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 app = FastAPI()
+
+# CORS configuration: allow frontend browser origin(s)
+_cors_origins_env = os.getenv("API_CORS_ORIGINS", "http://localhost:5173")
+_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+allow_credentials = True
+if "*" in _origins:
+    # Wildcard cannot be combined with credentials per spec; adjust automatically
+    allow_credentials = False
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=allow_credentials,
+)
 
 ai_conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
 ai_key = os.getenv("APPINSIGHTS_INSTRUMENTATIONKEY") or os.getenv(
