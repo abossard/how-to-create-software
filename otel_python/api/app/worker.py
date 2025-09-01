@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import logging
 
 import redis.asyncio as redis
 import time
@@ -14,16 +15,31 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
+# 🔥 Reduce Azure Monitor HTTP logging verbosity while keeping Live Metrics
+logging.getLogger("azure.core.pipeline.policies.http_logging_policy").setLevel(logging.WARNING)
+logging.getLogger("azure.monitor.opentelemetry").setLevel(logging.WARNING)
+
 ai_conn = os.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING")
 ai_key = os.getenv("APPINSIGHTS_INSTRUMENTATIONKEY") or os.getenv(
     "APPLICATIONINSIGHTS_INSTRUMENTATION_KEY"
 )
 if ai_conn or ai_key:
-    configure_azure_monitor()
+    # 🔥 Configure Azure Monitor with Live Metrics Stream for Worker
+    configure_azure_monitor(
+        connection_string=ai_conn,
+        enable_live_metrics=True,  # Enable Live Metrics Stream
+        resource=Resource.create({
+            "service.name": "otel-python-worker",
+            "service.version": "1.0.0",
+            "service.instance.id": os.getenv("HOSTNAME", "worker-1")
+        })
+    )
+    print("🔥 Worker: Azure Monitor configured with Live Metrics Stream enabled", flush=True)
 else:
     provider = TracerProvider(resource=Resource.create({"service.name": "worker"}))
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
     trace.set_tracer_provider(provider)
+    print("⚠️ Worker: Using OTLP exporter - Azure Monitor not configured", flush=True)
 
 RedisInstrumentor().instrument()
 
@@ -95,26 +111,55 @@ async def worker_loop(heartbeat_interval: float = 30.0):
             # BLPOP with a timeout so we can check shutdown flag periodically
             res = await r.blpop(QUEUE, timeout=5)
             if res is None:
-                # timeout - heartbeat check
+                # timeout - heartbeat check with 🔥 Live Metrics
                 now = time.time()
                 if now - last_heartbeat >= heartbeat_interval:
                     qlen = await r.llen(QUEUE)
                     dllen = await r.llen(DEAD_LETTER)
-                    jlog("info", "heartbeat", processed=processed, queue_length=qlen, dead_letter=dllen)
+                    
+                    # 🔥 Enhanced heartbeat with live metrics for Application Insights
+                    heartbeat_data = {
+                        "processed": processed, 
+                        "queue_length": qlen, 
+                        "dead_letter": dllen,
+                        "worker_active": True,
+                        "uptime_seconds": round(now - start_time, 2)
+                    }
+                    jlog("info", "heartbeat", **heartbeat_data)
+                    
+                    # Add custom telemetry for live metrics
+                    with tracer.start_as_current_span("worker_heartbeat") as span:
+                        span.set_attribute("worker.processed_total", processed)
+                        span.set_attribute("worker.queue_length", qlen)
+                        span.set_attribute("worker.dead_letter_count", dllen)
+                        span.set_attribute("worker.active", True)
+                    
                     last_heartbeat = now
                 continue
             _, raw = res
             job = json.loads(raw)
-            with tracer.start_as_current_span(f"process_{job['kind']}"):
+            
+            # 🔥 Enhanced job processing with live metrics
+            with tracer.start_as_current_span(f"process_{job['kind']}") as span:
+                span.set_attribute("job.id", job["id"])
+                span.set_attribute("job.kind", job["kind"])
+                span.set_attribute("worker.processed_count", processed + 1)
                 await handle(job)
             processed += 1
+            
         except Exception as e:  # noqa: BLE001
             jlog("error", "job processing error", error=str(e))
+            # 🔥 Track errors in live metrics
+            with tracer.start_as_current_span("worker_error") as span:
+                span.set_attribute("error.message", str(e))
+                span.set_attribute("worker.error_count", 1)
             await asyncio.sleep(1)
     jlog("info", "shutdown complete", processed=processed)
 
 async def main():
     start = time.time()
+    global start_time
+    start_time = start  # 🔥 Make start time available for live metrics
     jlog("info", "startup", pid=os.getpid())
     try:
         await ensure_redis()
