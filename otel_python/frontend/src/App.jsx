@@ -219,6 +219,143 @@ export default function App() {
       .finally(() => setLoading(false));
   };
 
+  // Generate random string for bulk tasks
+  const generateRandomString = (length = 8) => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return result;
+  };
+
+  // Send 1000 random tasks
+  const sendBulkTasks = async () => {
+    setLoading(true);
+    setStatus({ bulk: true, totalTasks: 1000, submitted: 0, completed: 0 });
+    
+    const taskTypes = ['task1', 'task2', 'task3'];
+    const baseText = input || 'BulkTask';
+    
+    // Track bulk operation start
+    if (appInsights && appInsights.trackEvent) {
+      appInsights.trackEvent(
+        { name: 'BulkTasksStarted' },
+        { 
+          totalTasks: 1000,
+          baseText: baseText,
+          timestamp: new Date().toISOString(),
+          apiBase: API_BASE
+        }
+      );
+    }
+
+    try {
+      // Submit all 1000 tasks in maximum sized batches for SUPER FAST submission
+      const batchSize = 100; // Maximum batch size for speed
+      let submittedCount = 0;
+      
+      for (let batch = 0; batch < 10; batch++) { // 10 batches of 100 tasks each
+        const batchPromises = [];
+        
+        for (let i = 0; i < batchSize; i++) {
+          const taskIndex = batch * batchSize + i;
+          const randomSuffix = generateRandomString(8);
+          const taskText = `${baseText}_${randomSuffix}_${taskIndex}`;
+          const endpoint = taskTypes[taskIndex % 3]; // Rotate between task types
+          
+          // Create task span for this bulk task
+          const taskSpan = apiClient.createTaskSpan(endpoint, taskText);
+          
+          const taskPromise = apiClient.post(endpoint, taskText)
+            .then(async (response) => {
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
+              
+              const taskId = data.task_id;
+              taskSpan.taskId = taskId;
+              
+              // Initialize result tracking
+              setResults(prev => ({ ...prev, [taskId]: { 
+                status: 'pending', 
+                attempt: 0, 
+                submittedAt: new Date().toISOString(),
+                taskType: endpoint,
+                bulkTask: true,
+                bulkIndex: taskIndex
+              } }));
+              
+              // Update bulk status
+              setStatus(prev => ({ 
+                ...prev, 
+                submitted: prev.submitted + 1 
+              }));
+              
+              // Start polling for this task (with shorter timeout for bulk)
+              pollResult(taskId, 10, taskSpan);
+              
+              return { taskId, endpoint, taskText };
+            })
+            .catch((err) => {
+              console.error(`Bulk task ${taskIndex} error:`, err);
+              taskSpan.complete(null, 'failed', err.message);
+              throw err;
+            });
+          
+          batchPromises.push(taskPromise);
+        }
+        
+        // Fire all requests in parallel - NO DELAYS for maximum speed
+        await Promise.allSettled(batchPromises);
+        submittedCount += batchSize;
+        
+        // NO DELAYS between batches - MAXIMUM SPEED
+      }
+      
+      // Track bulk submission completion
+      if (appInsights && appInsights.trackEvent) {
+        appInsights.trackEvent(
+          { name: 'BulkTasksSubmitted' },
+          { 
+            totalTasks: 1000,
+            submittedTasks: submittedCount,
+            baseText: baseText,
+            timestamp: new Date().toISOString(),
+            apiBase: API_BASE
+          }
+        );
+      }
+      
+      setStatus(prev => ({ 
+        ...prev, 
+        submissionComplete: true,
+        message: `All 1000 tasks submitted! Check results below as they complete.`
+      }));
+      
+    } catch (err) {
+      console.error('Bulk task submission error:', err);
+      setStatus(prev => ({ 
+        ...prev, 
+        error: `Bulk submission failed: ${err.message}` 
+      }));
+      
+      // Track bulk operation error
+      if (appInsights && appInsights.trackException) {
+        appInsights.trackException(
+          { exception: err },
+          { 
+            operation: 'bulkTaskSubmission',
+            totalTasks: 1000,
+            baseText: baseText,
+            apiBase: API_BASE
+          }
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1>Task Processing Demo</h1>
@@ -242,9 +379,51 @@ export default function App() {
         </button>
       </div>
 
-      {loading && <p style={{ color: '#007acc' }}>Submitting task...</p>}
+      <div style={{ marginBottom: '20px' }}>
+        <button 
+          disabled={loading} 
+          onClick={sendBulkTasks}
+          style={{ 
+            padding: '10px 20px', 
+            backgroundColor: '#ff6b35', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '4px',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            fontSize: '14px',
+            fontWeight: 'bold'
+          }}
+        >
+          ⚡ BLAST 1000 TASKS SUPER FAST ⚡
+        </button>
+        <span style={{ marginLeft: '10px', fontSize: '0.9em', color: '#666' }}>
+          Max speed! Uses input text as prefix + random chars
+        </span>
+      </div>
+
+      {loading && <p style={{ color: '#007acc' }}>
+        {status?.bulk ? 'Submitting bulk tasks...' : 'Submitting task...'}
+      </p>}
       
-      {status && !status.error && (
+      {status && status.bulk && (
+        <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#fff3cd', border: '1px solid #ffc107', borderRadius: '4px' }}>
+          <h3 style={{ margin: '0 0 10px 0', color: '#856404' }}>🚀 Bulk Task Operation</h3>
+          <p><strong>Total Tasks:</strong> {status.totalTasks}</p>
+          <p><strong>Submitted:</strong> {status.submitted || 0}</p>
+          {status.submissionComplete && (
+            <p style={{ color: 'green', fontWeight: 'bold' }}>✅ {status.message}</p>
+          )}
+          {status.error && (
+            <p style={{ color: 'red', fontWeight: 'bold' }}>❌ {status.error}</p>
+          )}
+          <div style={{ marginTop: '10px', fontSize: '0.9em', color: '#6c757d' }}>
+            <p>� MAXIMUM SPEED: Tasks submitted in batches of 100 with NO delays</p>
+            <p>📊 Results will appear below as tasks complete (expect rapid submission!)</p>
+          </div>
+        </div>
+      )}
+      
+      {status && !status.error && !status.bulk && (
         <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#f0f8ff', border: '1px solid #007acc' }}>
           <p><strong>Task Submitted:</strong> {status.kind} (ID: {status.taskId})</p>
           {status.completed ? (
@@ -255,7 +434,7 @@ export default function App() {
         </div>
       )}
       
-      {status && status.error && (
+      {status && status.error && !status.bulk && (
         <div style={{ marginBottom: '20px', padding: '10px', backgroundColor: '#ffe6e6', border: '1px solid #cc0000' }}>
           <p style={{ color: 'red' }}><strong>Error:</strong> {status.error}</p>
         </div>
@@ -263,48 +442,103 @@ export default function App() {
 
       {Object.keys(results).length > 0 && (
         <div style={{ marginTop: '20px' }}>
-          <h2>Results:</h2>
-          {Object.entries(results)
-            .sort(([, a], [, b]) => {
-              // Sort by latest timestamp (completed, error, timeout, or submitted) - newest first
-              const timestampA = a.completedAt || a.errorAt || a.timeoutAt || a.submittedAt || '';
-              const timestampB = b.completedAt || b.errorAt || b.timeoutAt || b.submittedAt || '';
-              // For newest first: if A is newer (later), it should come before B (negative result)
-              return new Date(timestampB) - new Date(timestampA); // Newest first
-            })
-            .map(([taskId, result]) => (
-              <div key={taskId} style={{ 
-                padding: '10px', 
-                margin: '10px 0', 
-                border: '1px solid #ddd',
-                backgroundColor: result.status === 'done' ? '#e8f5e8' : 
-                                result.status === 'error' || result.status === 'timeout' ? '#ffe6e6' : '#fff3cd'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <strong style={{ fontSize: '1.1em' }}>
-                    {result.taskType ? result.taskType.toUpperCase() : 'TASK'} - {taskId.slice(-8)}
-                  </strong>
-                  <span style={{ fontSize: '0.8em', color: '#666' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+            <h2>Results: ({Object.keys(results).length} tasks)</h2>
+            <div style={{ fontSize: '0.9em', color: '#666' }}>
+              <span style={{ marginRight: '15px' }}>
+                ✅ Done: {Object.values(results).filter(r => r.status === 'done').length}
+              </span>
+              <span style={{ marginRight: '15px' }}>
+                ⏳ Pending: {Object.values(results).filter(r => r.status === 'pending').length}
+              </span>
+              <span style={{ marginRight: '15px' }}>
+                ❌ Error: {Object.values(results).filter(r => r.status === 'error').length}
+              </span>
+              <span>
+                ⏱️ Timeout: {Object.values(results).filter(r => r.status === 'timeout').length}
+              </span>
+            </div>
+          </div>
+          
+          <div style={{ maxHeight: '600px', overflowY: 'auto', border: '1px solid #ddd', borderRadius: '4px' }}>
+            {Object.entries(results)
+              .sort(([, a], [, b]) => {
+                // Sort by latest timestamp (completed, error, timeout, or submitted) - newest first
+                const timestampA = a.completedAt || a.errorAt || a.timeoutAt || a.submittedAt || '';
+                const timestampB = b.completedAt || b.errorAt || b.timeoutAt || b.submittedAt || '';
+                return new Date(timestampB) - new Date(timestampA); // Newest first
+              })
+              .map(([taskId, result]) => (
+                <div key={taskId} style={{ 
+                  padding: '8px 12px', 
+                  margin: '0',
+                  borderBottom: '1px solid #eee',
+                  backgroundColor: result.status === 'done' ? '#e8f5e8' : 
+                                  result.status === 'error' || result.status === 'timeout' ? '#ffe6e6' : '#fff3cd',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  fontSize: '0.9em'
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '4px' }}>
+                      <strong style={{ marginRight: '8px' }}>
+                        {result.taskType ? result.taskType.toUpperCase() : 'TASK'}
+                      </strong>
+                      <span style={{ fontSize: '0.8em', color: '#666', fontFamily: 'monospace' }}>
+                        {taskId.slice(-8)}
+                      </span>
+                      {result.bulkTask && (
+                        <span style={{ 
+                          marginLeft: '8px', 
+                          fontSize: '0.7em', 
+                          backgroundColor: '#ff6b35', 
+                          color: 'white', 
+                          padding: '1px 4px', 
+                          borderRadius: '2px' 
+                        }}>
+                          BULK #{result.bulkIndex}
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div style={{ fontSize: '0.8em', color: '#666' }}>
+                      Status: {result.status}
+                      {result.status === 'pending' && result.attempt && ` (attempt ${result.attempt})`}
+                    </div>
+                    
+                    {result.result && (
+                      <div style={{ marginTop: '4px', fontSize: '0.8em' }}>
+                        <strong>Result:</strong> 
+                        <code style={{ 
+                          backgroundColor: '#f5f5f5', 
+                          padding: '1px 3px', 
+                          marginLeft: '4px',
+                          fontSize: '0.9em'
+                        }}>
+                          {result.result.length > 50 ? `${result.result.substring(0, 50)}...` : result.result}
+                        </code>
+                      </div>
+                    )}
+                    
+                    {result.error && (
+                      <div style={{ marginTop: '4px', fontSize: '0.8em', color: 'red' }}>
+                        <strong>Error:</strong> {result.error.length > 100 ? `${result.error.substring(0, 100)}...` : result.error}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div style={{ fontSize: '0.75em', color: '#666', textAlign: 'right', minWidth: '80px' }}>
                     {result.completedAt && `✅ ${new Date(result.completedAt).toLocaleTimeString()}`}
                     {result.errorAt && `❌ ${new Date(result.errorAt).toLocaleTimeString()}`}
                     {result.timeoutAt && `⏱️ ${new Date(result.timeoutAt).toLocaleTimeString()}`}
                     {!result.completedAt && !result.errorAt && !result.timeoutAt && result.submittedAt && 
                       `⏳ ${new Date(result.submittedAt).toLocaleTimeString()}`}
-                  </span>
+                  </div>
                 </div>
-                <p><strong>Status:</strong> {result.status}</p>
-                {result.status === 'pending' && (
-                  <p><strong>Polling attempt:</strong> {result.attempt || 1}</p>
-                )}
-                {result.result && (
-                  <p><strong>Result:</strong> <code style={{ backgroundColor: '#f5f5f5', padding: '2px 4px' }}>{result.result}</code></p>
-                )}
-                {result.error && (
-                  <p style={{ color: 'red' }}><strong>Error:</strong> {result.error}</p>
-                )}
-              </div>
-            ))
-          }
+              ))
+            }
+          </div>
         </div>
       )}
     </div>
