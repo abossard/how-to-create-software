@@ -229,11 +229,11 @@ export default function App() {
     return result;
   };
 
-  // Send 1000 random tasks
+  // Send 100 random tasks
   const sendBulkTasks = async () => {
     setLoading(true);
-    setStatus({ bulk: true, totalTasks: 1000, submitted: 0, completed: 0 });
-    
+    setStatus({ bulk: true, totalTasks: 100, submitted: 0, completed: 0 });
+
     const taskTypes = ['task1', 'task2', 'task3'];
     const baseText = input || 'BulkTask';
     
@@ -242,7 +242,7 @@ export default function App() {
       appInsights.trackEvent(
         { name: 'BulkTasksStarted' },
         { 
-          totalTasks: 1000,
+          totalTasks: 100,
           baseText: baseText,
           timestamp: new Date().toISOString(),
           apiBase: API_BASE
@@ -251,7 +251,7 @@ export default function App() {
     }
 
     try {
-      // Submit all 1000 tasks in maximum sized batches for SUPER FAST submission
+      // Submit all 100 tasks in maximum sized batches for SUPER FAST submission
       const batchSize = 100; // Maximum batch size for speed
       let submittedCount = 0;
       
@@ -317,7 +317,7 @@ export default function App() {
         appInsights.trackEvent(
           { name: 'BulkTasksSubmitted' },
           { 
-            totalTasks: 1000,
+            totalTasks: 100,
             submittedTasks: submittedCount,
             baseText: baseText,
             timestamp: new Date().toISOString(),
@@ -329,7 +329,7 @@ export default function App() {
       setStatus(prev => ({ 
         ...prev, 
         submissionComplete: true,
-        message: `All 1000 tasks submitted! Check results below as they complete.`
+        message: `All 100 tasks submitted! Check results below as they complete.`
       }));
       
     } catch (err) {
@@ -345,7 +345,7 @@ export default function App() {
           { exception: err },
           { 
             operation: 'bulkTaskSubmission',
-            totalTasks: 1000,
+            totalTasks: 100,
             baseText: baseText,
             apiBase: API_BASE
           }
@@ -394,7 +394,7 @@ export default function App() {
             fontWeight: 'bold'
           }}
         >
-          ⚡ BLAST 1000 TASKS SUPER FAST ⚡
+          ⚡ BLAST 100 TASKS SUPER FAST ⚡
         </button>
         <span style={{ marginLeft: '10px', fontSize: '0.9em', color: '#666' }}>
           Max speed! Uses input text as prefix + random chars
